@@ -26,7 +26,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RecursiveTask;
 @Slf4j
-@Service
+
 public class PageCrawlerTask extends RecursiveTask<Void> {
     @Setter
     private String url;
@@ -46,19 +46,27 @@ public class PageCrawlerTask extends RecursiveTask<Void> {
 
     private static final Logger logger = LoggerFactory.getLogger(PageCrawlerTask.class);
 
-    @Autowired
+    @Setter
+    private volatile boolean indexing;
+
+
     public PageCrawlerTask(PageRepository pageRepository,
                            LemmaRepository lemmaRepository,
                            IndexRepository indexRepository,
-                           LemmaExtractor lemmaExtractor) {
+                           LemmaExtractor lemmaExtractor,
+                           boolean indexing) {
         this.pageRepository = pageRepository;
         this.lemmaRepository = lemmaRepository;
         this.indexRepository = indexRepository;
         this.lemmaExtractor = lemmaExtractor;
+        this.indexing = indexing;
     }
 
     @Override
     protected Void compute() {
+        if (!indexing || Thread.currentThread().isInterrupted()) {
+            return null;
+        }
         try {
             if (!visitedUrls.add(url)) {
                 return null;
@@ -88,9 +96,12 @@ public class PageCrawlerTask extends RecursiveTask<Void> {
             Elements links = result.document.select("a[href]");
             List<PageCrawlerTask> subTasks = new ArrayList<>();
             for (var link : links) {
+                if (!indexing || Thread.currentThread().isInterrupted()) {
+                    return null;
+                }
                 String linkUrl = link.attr("abs:href");
                 if (isValidUrl(linkUrl)) {
-                    PageCrawlerTask task = new PageCrawlerTask(pageRepository, lemmaRepository, indexRepository, lemmaExtractor);
+                    PageCrawlerTask task = new PageCrawlerTask(pageRepository, lemmaRepository, indexRepository, lemmaExtractor, indexing);
                     task.setUrl(linkUrl);
                     task.setSite(site);
                     subTasks.add(task);

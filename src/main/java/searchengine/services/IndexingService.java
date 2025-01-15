@@ -15,6 +15,7 @@ import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.utils.PageCrawlerTaskFactory;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -26,41 +27,49 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class IndexingService {
     @Getter
-    private volatile boolean indexing = false;
+    private final AtomicBoolean indexing = new AtomicBoolean(false);
 
     private final SitesList sitesList;
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
-    private ExecutorService executorService;
     private final LemmaExtractor lemmaExtractor;
+    private final PageCrawlerTaskFactory pageCrawlerTaskFactory;
+    private ExecutorService executorService;
 
+
+    public boolean isIndexing() {
+        return indexing.get();
+    }
     @Autowired
     public IndexingService(SitesList sitesList,
                            SiteRepository siteRepository,
                            PageRepository pageRepository,
                            LemmaRepository lemmaRepository,
                            IndexRepository indexRepository,
-                           LemmaExtractor lemmaExtractor) throws IOException {
+                           LemmaExtractor lemmaExtractor,
+                           PageCrawlerTaskFactory pageCrawlerTaskFactory) throws IOException {
         this.sitesList = sitesList;
         this.siteRepository = siteRepository;
         this.pageRepository = pageRepository;
         this.lemmaRepository = lemmaRepository;
         this.indexRepository = indexRepository;
         this.lemmaExtractor = lemmaExtractor;
+        this.pageCrawlerTaskFactory = pageCrawlerTaskFactory;
     }
 
+
     public synchronized void startIndexing() {
-        if (indexing) {
+        if (!indexing.compareAndSet(false, true)) {
             System.err.println("Indexing has already started.");
             return;
         }
-        indexing = true;
         executorService = Executors.newFixedThreadPool(10);
 
         for (searchengine.config.Site siteConfig : sitesList.getSites()) {
@@ -81,33 +90,42 @@ public class IndexingService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
-            indexing = false;
+            indexing.set(false);
         }
     }
 
     public synchronized void stopIndexing() {
-        if (!indexing) {
+        if (!indexing.compareAndSet(true, false)) {
             System.err.println("Indexing has not started yet.");
             return;
         }
-        indexing = false;
-        executorService.shutdownNow();
+        if (executorService != null && !executorService.isShutdown()) {
+            executorService.shutdownNow();
+            try {
+                if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                    System.err.println("Tasks did not terminate within the timeout.");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         for (searchengine.config.Site siteConfig : sitesList.getSites()) {
-            Optional<Site> optionalSite = siteRepository.findByUrl(siteConfig.getUrl());
-            if (optionalSite.isPresent()) {
-                Site site = optionalSite.get();
+            siteRepository.findByUrl(siteConfig.getUrl()).ifPresent(site -> {
                 if (site.getStatus() == Status.INDEXING) {
                     site.setStatus(Status.FAILED);
                     site.setLastError("Indexing was stopped");
                     site.setStatusTime(LocalDateTime.now());
                     siteRepository.save(site);
                 }
-            }
+            });
         }
     }
 
     @Transactional
     private void indexSite(searchengine.config.Site siteConfig) {
+        if (!indexing.get()) {
+            return;
+        }
         Optional<Site> optionalSite = siteRepository.findByUrl(siteConfig.getUrl());
         Site site;
         if (optionalSite.isEmpty()) {
@@ -123,14 +141,18 @@ public class IndexingService {
         System.out.println("Started indexing site: " + site.getUrl());
 
         try {
+            if (!indexing.get()) {
+                throw new InterruptedException("Indexing stopped by user.");
+            }
             crawlSite(site);
-            if (indexing) {
-                site.setStatus(Status.INDEXED);
-                System.out.println("Successfully indexed site: " + site.getUrl());
-            } else {
+
+            if (!indexing.get()) {
                 site.setStatus(Status.FAILED);
                 site.setLastError("Indexing stopped by user");
                 System.out.println("Indexing stopped by user for site: " + site.getUrl());
+            } else {
+                site.setStatus(Status.INDEXED);
+                System.out.println("Successfully indexed site: " + site.getUrl());
             }
         } catch (Exception e) {
             site.setStatus(Status.FAILED);
@@ -143,16 +165,18 @@ public class IndexingService {
     }
 
     private void crawlSite(Site site) {
-        if (!indexing) {
+        if (!indexing.get() || Thread.currentThread().isInterrupted()) {
             return;
         }
         ForkJoinPool pool = new ForkJoinPool();
-        PageCrawlerTask task = new PageCrawlerTask(pageRepository, lemmaRepository, indexRepository, lemmaExtractor);
-        task.setUrl(site.getUrl());
-        task.setSite(site);
+        PageCrawlerTask task = pageCrawlerTaskFactory.create(site.getUrl(), site, indexing.get());
         pool.invoke(task);
 
         System.out.println("Crawled site: " + site.getUrl());
+        if (Thread.currentThread().isInterrupted()) {
+            System.err.println("Task interrupted: " + site.getUrl());
+            return;
+        }
     }
 
     private void handleIndexingError(searchengine.config.Site siteConfig, Exception e) {
