@@ -16,7 +16,6 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
-
 @Service
 @RequiredArgsConstructor
 public class StatisticsServiceImpl implements StatisticsService {
@@ -24,6 +23,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
     private final LemmaRepository lemmaRepository;
+
     @Override
     public StatisticsResponse getStatistics() {
         List<searchengine.model.Site> sites = siteRepository.findAll();
@@ -57,17 +57,14 @@ public class StatisticsServiceImpl implements StatisticsService {
             detailed.add(item);
         }
 
-
         total.setSites(sites.size());
         total.setPages(totalPages);
         total.setLemmas(totalLemmas);
         total.setIndexing(isIndexing);
 
-
         StatisticsData statisticsData = new StatisticsData();
         statisticsData.setTotal(total);
         statisticsData.setDetailed(detailed);
-
 
         StatisticsResponse response = new StatisticsResponse();
         response.setResult(true);

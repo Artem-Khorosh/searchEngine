@@ -43,7 +43,6 @@ public class IndexingService {
     private final PageCrawlerTaskFactory pageCrawlerTaskFactory;
     private ExecutorService executorService;
 
-
     public boolean isIndexing() {
         return indexing.get();
     }
@@ -63,7 +62,6 @@ public class IndexingService {
         this.lemmaExtractor = lemmaExtractor;
         this.pageCrawlerTaskFactory = pageCrawlerTaskFactory;
     }
-
 
     public synchronized void startIndexing() {
         if (!indexing.compareAndSet(false, true)) {
@@ -122,75 +120,6 @@ public class IndexingService {
     }
 
     @Transactional
-    private void indexSite(searchengine.config.Site siteConfig) {
-        if (!indexing.get()) {
-            return;
-        }
-        Optional<Site> optionalSite = siteRepository.findByUrl(siteConfig.getUrl());
-        Site site;
-        if (optionalSite.isEmpty()) {
-            site = new Site();
-            site.setUrl(siteConfig.getUrl());
-            site.setName(siteConfig.getName());
-        } else {
-            site = optionalSite.get();
-        }
-        site.setStatus(Status.INDEXING);
-        site.setStatusTime(LocalDateTime.now());
-        siteRepository.save(site);
-        System.out.println("Started indexing site: " + site.getUrl());
-
-        try {
-            if (!indexing.get()) {
-                throw new InterruptedException("Indexing stopped by user.");
-            }
-            crawlSite(site);
-
-            if (!indexing.get()) {
-                site.setStatus(Status.FAILED);
-                site.setLastError("Indexing stopped by user");
-                System.out.println("Indexing stopped by user for site: " + site.getUrl());
-            } else {
-                site.setStatus(Status.INDEXED);
-                System.out.println("Successfully indexed site: " + site.getUrl());
-            }
-        } catch (Exception e) {
-            site.setStatus(Status.FAILED);
-            site.setLastError(e.getMessage());
-            System.err.println("Error indexing site: " + site.getUrl() + " - " + e.getMessage());
-        } finally {
-            site.setStatusTime(LocalDateTime.now());
-            siteRepository.save(site);
-        }
-    }
-
-    private void crawlSite(Site site) {
-        if (!indexing.get() || Thread.currentThread().isInterrupted()) {
-            return;
-        }
-        ForkJoinPool pool = new ForkJoinPool();
-        PageCrawlerTask task = pageCrawlerTaskFactory.create(site.getUrl(), site, indexing.get());
-        pool.invoke(task);
-
-        System.out.println("Crawled site: " + site.getUrl());
-        if (Thread.currentThread().isInterrupted()) {
-            System.err.println("Task interrupted: " + site.getUrl());
-            return;
-        }
-    }
-
-    private void handleIndexingError(searchengine.config.Site siteConfig, Exception e) {
-        Optional<Site> optionalSite = siteRepository.findByUrl(siteConfig.getUrl());
-        if (optionalSite.isPresent()) {
-            Site site = optionalSite.get();
-            site.setStatus(Status.FAILED);
-            site.setLastError(e.getMessage());
-            site.setStatusTime(LocalDateTime.now());
-            siteRepository.save(site);
-        }
-    }
-
-    @Transactional
     public boolean indexPage(String url) throws IOException {
         String siteUrl = url.split("/")[2];
         Optional<Site> optionalSite = siteRepository.findByUrl(url);
@@ -244,5 +173,73 @@ public class IndexingService {
             }
         }
         return null;
+    }
+
+    private void indexSite(searchengine.config.Site siteConfig) {
+        if (!indexing.get()) {
+            return;
+        }
+        Optional<Site> optionalSite = siteRepository.findByUrl(siteConfig.getUrl());
+        Site site;
+        if (optionalSite.isEmpty()) {
+            site = new Site();
+            site.setUrl(siteConfig.getUrl());
+            site.setName(siteConfig.getName());
+        } else {
+            site = optionalSite.get();
+        }
+        site.setStatus(Status.INDEXING);
+        site.setStatusTime(LocalDateTime.now());
+        siteRepository.save(site);
+        System.out.println("Started indexing site: " + site.getUrl());
+
+        try {
+            if (!indexing.get()) {
+                throw new InterruptedException("Indexing stopped by user.");
+            }
+            crawlSite(site);
+
+            if (!indexing.get()) {
+                site.setStatus(Status.FAILED);
+                site.setLastError("Indexing stopped by user");
+                System.out.println("Indexing stopped by user for site: " + site.getUrl());
+            } else {
+                site.setStatus(Status.INDEXED);
+                System.out.println("Successfully indexed site: " + site.getUrl());
+            }
+        } catch (Exception e) {
+            site.setStatus(Status.FAILED);
+            site.setLastError(e.getMessage());
+            System.err.println("Error indexing site: " + site.getUrl() + " - " + e.getMessage());
+        } finally {
+            site.setStatusTime(LocalDateTime.now());
+            siteRepository.save(site);
+        }
+    }
+
+    private void handleIndexingError(searchengine.config.Site siteConfig, Exception e) {
+        Optional<Site> optionalSite = siteRepository.findByUrl(siteConfig.getUrl());
+        if (optionalSite.isPresent()) {
+            Site site = optionalSite.get();
+            site.setStatus(Status.FAILED);
+            site.setLastError(e.getMessage());
+            site.setStatusTime(LocalDateTime.now());
+            siteRepository.save(site);
+        }
+    }
+
+    private void crawlSite(Site site) {
+        if (!indexing.get() || Thread.currentThread().isInterrupted()) {
+            return;
+        }
+        ForkJoinPool pool = new ForkJoinPool();
+        PageCrawlerTask task = pageCrawlerTaskFactory.create(site.getUrl(), site, indexing.get());
+        pool.invoke(task);
+
+        System.out.println("Crawled site: " + site.getUrl());
+        if (Thread.currentThread().isInterrupted()) {
+            System.err.println("Task interrupted: " + site.getUrl());
+            return;
+        }
     }
 }

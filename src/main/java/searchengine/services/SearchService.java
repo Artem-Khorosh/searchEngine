@@ -34,7 +34,6 @@ public class SearchService {
 
     private static final double MAX_LEMMA_FREQUENCY_PERCENT = 0.1;
 
-
     @Autowired
     public SearchService(SiteRepository siteRepository,
                          PageRepository pageRepository,
@@ -94,7 +93,6 @@ public class SearchService {
         response.setCount(results.size());
         response.setData(results);
         return response;
-
     }
 
     private double calculateAbsoluteRelevance(Page page, List<String> lemmas) {
@@ -181,5 +179,4 @@ public class SearchService {
 
         return snippet;
     }
-
 }

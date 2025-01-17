@@ -20,8 +20,6 @@ public class LemmaExtractor {
     private static final String WORD_TYPE_REGEX = "\\W\\w&&[^а-яА-Я\\s]";
     private static final String[] PARTICLES_NAMES = new String[]{"МЕЖД", "ПРЕДЛ", "СОЮЗ", "ЧАСТ"};
 
-
-
     public LemmaExtractor() throws IOException {
         this.luceneMorphology = new RussianLuceneMorphology();
     }
@@ -43,9 +41,7 @@ public class LemmaExtractor {
         return lemmaFrequency;
     }
 
-
     public Set<String> getLemmaSet(String text) {
-
         return extractLemmas(text).keySet();
     }
 
@@ -94,6 +90,7 @@ public class LemmaExtractor {
                 .trim()
                 .split("\\s+");
     }
+
     private boolean isCorrectWordForm(String word) {
         return word.matches(WORD_TYPE_REGEX);
     }

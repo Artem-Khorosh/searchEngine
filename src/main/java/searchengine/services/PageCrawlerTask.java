@@ -25,8 +25,8 @@ import java.net.SocketTimeoutException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RecursiveTask;
-@Slf4j
 
+@Slf4j
 public class PageCrawlerTask extends RecursiveTask<Void> {
     @Setter
     private String url;
@@ -48,7 +48,6 @@ public class PageCrawlerTask extends RecursiveTask<Void> {
 
     @Setter
     private volatile boolean indexing;
-
 
     public PageCrawlerTask(PageRepository pageRepository,
                            LemmaRepository lemmaRepository,
@@ -132,10 +131,8 @@ public class PageCrawlerTask extends RecursiveTask<Void> {
                 delay();
             } catch (UnsupportedMimeTypeException e) {
                 logger.warn("Warning: Skipping URL due to unhandled content type: " + e.getMimeType());
-//                return null;
             } catch (HttpStatusException e) {
                 logger.warn("Warning: Skipping URL due to HTTP error: " + e.getStatusCode() + ", URL: " + e.getUrl());
-//                return null;
             } catch (IOException e) {
                 logger.error("Error fetching URL: " + url,e);
             }
@@ -152,9 +149,9 @@ public class PageCrawlerTask extends RecursiveTask<Void> {
                 && !url.contains("?") && !pageRepository.existsByPath(url);
     }
 
-
     private record FetchResult(Document document, int statusCode) {
     }
+
     private String filterCyrillic(String input) {
         return input.replaceAll("[^а-яА-ЯёЁ]", "");
     }

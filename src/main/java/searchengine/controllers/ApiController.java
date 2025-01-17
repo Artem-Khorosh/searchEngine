@@ -14,7 +14,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
-
 public class ApiController {
     @Autowired
     private final StatisticsService statisticsService;
@@ -105,7 +104,5 @@ public class ApiController {
         }
 
         return ResponseEntity.ok(response);
-
     }
-
 }
